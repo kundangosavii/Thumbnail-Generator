@@ -22,8 +22,8 @@ def get_variant(base_url: str):
     """Return 3 size of image: small, medium, large"""
 
     return {
-        "youtube" : f"{base_url}?tr=w-1280,h-720,fo-auto",
-        "short" : f"{base_url}?tr=w-400,h-400,fo-auto", 
-        "square" : f"{base_url}?tr=w-400,h-400,fo-auto"
+        "youtube" : f"{base_url}?tr=w-1280,h-720,c-maintain-ratio,fo-auto",
+        "short" : f"{base_url}?tr=w-400,h-400,c-maintain-ratio,fo-auto", 
+        "square" : f"{base_url}?tr=w-400,h-400,c-maintain-ratio,fo-auto"
     }
 
