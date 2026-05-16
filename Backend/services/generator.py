@@ -32,7 +32,7 @@ STYLES = {
 
 STYLES_ORDER = ["bold_dramatic", "clean_minimal", "vibrant_energetic"]
 
-async def generate_first_thumbnail(thumbnail_id: str, headshot_url: str):
+async def generate_first_thumbnail(thumbnail_id: str, prompt: str, headshot_url: str):
     # DB Mark --> generating
     with Session(engine) as session:
         thum = session.get(Thumbnail, thumbnail_id)
@@ -42,7 +42,37 @@ async def generate_first_thumbnail(thumbnail_id: str, headshot_url: str):
         session.commit()
 
     style_prompt = STYLES[style_name]
-    
+
     # AI call
-    # upload this image
-    # DB update status + DB call save URL
+    try:
+        image_bytes = await generate_thumbnail(prompt, style_prompt, headshot_url)
+
+        with Session(engine) as session:
+            thum = session.get(Thumbnail, thumbnail_id)
+            job_id = thum.job_id
+
+            # upload to imagekit
+
+            url = upload_file(
+                file_bytes=image_bytes,
+                file_name=f"{thumbnail_id}.png",
+                folder_path=f"thumbnails/{job_id}/"
+            )
+
+            # update DB with URL and mark as uploaded
+            with Session(engine) as session:
+                thum = session.get(Thumbnail, thumbnail_id)
+                thum.imageKit_url = url
+                thum.status = "uploaded"
+                session.add(thum)
+                session.commit()
+            logger.info(f"Thumbnail {thumbnail_id} generated and uploaded successfully.")  
+    
+    except Exception as e:
+        logger.error(f"Error generating thumbnail {thumbnail_id}: {str(e)}")
+        with Session(engine) as session:
+            thum = session.get(Thumbnail, thumbnail_id)
+            thum.status = "error"
+            thum.error_message = str(e)[:500]  # Truncate error message to fit in DB field
+            session.add(thum)
+            session.commit()
