@@ -39,3 +39,27 @@ async def upload_headshot(file: UploadFile = File(...)):
     )
     return {"url": url}
 
+router.post("/jobs", response_model=JobCreateResponse)
+async def create_job(request: JobCreateRequest, session: Session = Depends(get_session)):
+    if request.num_thumbnails < 1 or request.num_thumbnails > 3:
+        raise HTTPException(status_code=400, detail="num_thumbnails must be between 1 and 3")
+    
+    job = Job(
+        prompt=request.prompt,
+        num_thumbnails=request.num_thumbnails,
+        headshot_url=request.headshot_url,
+        status="pending"
+    )
+
+    session.add(job)
+
+    styles = STYLES_ORDER[:request.num_thumbnails]
+    for style in styles:
+        thumb = Thumbnail(
+            job_id=job.id,
+            style_name=style,
+        )
+
+        session.add(thumb)
+
+    session.commit()
