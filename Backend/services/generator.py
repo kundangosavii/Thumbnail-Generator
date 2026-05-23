@@ -3,7 +3,7 @@ import logging
 
 from sqlmodel import Session, select
 from database import engine
-from model import job, Thumbnail
+from model import Job, Thumbnail
 from gemini_services import generate_thumbnail
 from imagekit_services import upload_file, get_variant
 
@@ -75,4 +75,45 @@ async def generate_first_thumbnail(thumbnail_id: str, prompt: str, headshot_url:
             thum.status = "error"
             thum.error_message = str(e)[:500]  # Truncate error message to fit in DB field
             session.add(thum)
+            session.commit()
+
+
+async def process_job(job_id: str):
+    # Mark job as processing
+    # find all thumbnails for the job
+    # start one worker for each thumbnail
+    # wait for all workers to finish
+    # Mark job as completed
+
+    with Session(engine) as session:
+        job = session.get(Job, job_id)
+        job.status = "processing"
+        prompt = job.prompt
+        headshot_url = job.headshot_url
+        session.add(job)
+        session.commit()
+
+        Thumbnails = session.exec(
+            select(Thumbnail).where(Thumbnail.job_id == job_id)
+        ).all()
+
+        thumbnail_ids = [thum.id for thum in Thumbnails]
+
+        tasks = [
+            generate_first_thumbnail(thumbnail_id, prompt, headshot_url)
+            for thumbnail_id in thumbnail_ids
+        ]
+
+        await asyncio.gather(*tasks, return_exceptions=True)
+
+        with Session(engine) as session:
+            Thumbnails = session.exec(
+            select(Thumbnail).where(Thumbnail.job_id == job_id)
+            ).all()
+
+            all_failed = all(Thumbnail.status == "failed"  for Thumbnail in Thumbnails)
+
+            job= session.get(Job, job_id)
+            job.status = "failed" if all_failed else "completed"
+            session.add(job)
             session.commit()
