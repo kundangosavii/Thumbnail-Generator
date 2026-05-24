@@ -36,7 +36,7 @@ class JobStatusResponse(BaseModel):
     thumbnails: list[ThumbnailResponse]
     
 
-router = APIRouter()
+router = APIRouter(prefix="/api")
 
 router.post("/upload-headshot")
 async def upload_headshot(file: UploadFile = File(...)):
