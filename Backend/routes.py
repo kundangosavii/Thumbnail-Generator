@@ -13,8 +13,8 @@ from services.imagekit_services import upload_file, get_variant
 
 class JobCreateRequest(BaseModel):
     prompt: str
-    style_name: str
-    headshot: UploadFile
+    headshot_url: str
+    num_thumbnails: int
 
 class JobCreateResponse(BaseModel):
     job_id: str
@@ -38,17 +38,20 @@ class JobStatusResponse(BaseModel):
 
 router = APIRouter(prefix="/api")
 
-router.post("/upload-headshot")
+@router.post("/upload-headshot")
 async def upload_headshot(file: UploadFile = File(...)):
-    content = await file.read()
-    url = upload_file(
-        file_bytes=content,
-        file_name=file.filename,
-        folder="headshots/"
-    )
-    return {"url": url}
+    try:
+        content = await file.read()
+        url = upload_file(
+            file_bytes=content,
+            file_name=file.filename,
+            folder="headshots/"
+        )
+        return {"url": url}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
 
-router.post("/jobs", response_model=JobCreateResponse)
+@router.post("/jobs", response_model=JobCreateResponse)
 async def create_job(request: JobCreateRequest, session: Session = Depends(get_session)):
     if request.num_thumbnails < 1 or request.num_thumbnails > 3:
         raise HTTPException(status_code=400, detail="num_thumbnails must be between 1 and 3")
@@ -108,7 +111,7 @@ async def get_job(job_id: str, session: Session = Depends(get_session)):
         thumbnails=thumbnail_responses
     )
 
-router.get("/jobs/{job_id}/stream")
+@router.get("/jobs/{job_id}/stream")
 async def stream_job(job_id: str):
     async def event_generator():
         from database import engine
@@ -134,13 +137,22 @@ async def stream_job(job_id: str):
                             "variants": varients
                         })
                          
-                        yield f"event: thumbnail ready\ndata: {data}\n\n"
+                        yield f"event: thumbnail_ready\ndata: {data}\n\n"
+                        sent_thumbnails.add(t.id)
+
+                    elif t.status == "failed":
+                        data = json.dumps({
+                            "id": t.id,
+                            "style_name": t.style_name,
+                            "error_message": t.error_message
+                        })
+                        yield f"event: thumbnail_failed\ndata: {data}\n\n"
                         sent_thumbnails.add(t.id)
                 
                 all_done = all(t.status in ["uploaded", "failed"] for t in thumbnails)
                 if all_done and len(sent_thumbnails) == len(thumbnails):
                     data = json.dumps({"job_id" : job_id, "status" : job.status})
-                    yield f"event: job complete\ndata: {json.dumps({data})}\n\n"
+                    yield f"event: job_complete\ndata: {json.dumps({data})}\n\n"
                     return
                 
             await asyncio.sleep(1.5)
