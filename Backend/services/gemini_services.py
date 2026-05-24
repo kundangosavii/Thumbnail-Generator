@@ -1,16 +1,21 @@
 import asyncio
 from io import BytesIO
+import base64
+import httpx
 from google import genai
 
-from config import GENAI_API_KEY
+from config import GEMINI_API_KEY
 
-client = genai.Client(api_key=GENAI_API_KEY)
+client = genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
 
 async def generate_thumbnail(prompt: str, style_prompt: str, headshot_url: str) -> bytes:
     """
-    Use Response API to generate a thumbnail image based on the provided prompts and headshot URL.
+    Use Gemini API to generate a thumbnail image based on the provided prompts and headshot URL.
     Returns the generated image as raw PNG bytes.
     """
+
+    if not client or not GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY not configured")
 
     full_prompt= (
         f"{style_prompt}\n"
@@ -20,12 +25,30 @@ async def generate_thumbnail(prompt: str, style_prompt: str, headshot_url: str) 
         "shown in the provided reference headshot Image. Keep their LIKENESS accurately."
     )
 
+    # Fetch image from URL and convert to base64
+    async with httpx.AsyncClient() as http_client:
+        image_response = await http_client.get(headshot_url)
+        image_response.raise_for_status()
+        image_bytes = image_response.content
+        image_base64 = base64.standard_b64encode(image_bytes).decode('utf-8')
+
+    # Build request using proper SDK format
     response = await asyncio.to_thread(
         client.models.generate_content,
-        model="gemini-3.1-flash-image-preview",
+        model="gemini-3-flash-preview",
         contents=[
-            {"type": "text", "text": full_prompt},
-            {"type": "input_image", "image_url": headshot_url}
+            {
+                "role": "user",
+                "parts": [
+                    {"text": full_prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": "image/jpeg",
+                            "data": image_base64
+                        }
+                    }
+                ]
+            }
         ],
     ) 
 
