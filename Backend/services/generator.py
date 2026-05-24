@@ -4,8 +4,8 @@ import logging
 from sqlmodel import Session, select
 from database import engine
 from model import Job, Thumbnail
-from gemini_services import generate_thumbnail
-from imagekit_services import upload_file, get_variant
+from .gemini_services import generate_thumbnail
+from .imagekit_services import upload_file, get_variant
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ async def generate_first_thumbnail(thumbnail_id: str, prompt: str, headshot_url:
             url = upload_file(
                 file_bytes=image_bytes,
                 file_name=f"{thumbnail_id}.png",
-                folder_path=f"thumbnails/{job_id}/"
+                folder=f"thumbnails/{job_id}/"
             )
 
             # update DB with URL and mark as uploaded
@@ -72,7 +72,7 @@ async def generate_first_thumbnail(thumbnail_id: str, prompt: str, headshot_url:
         logger.error(f"Error generating thumbnail {thumbnail_id}: {str(e)}")
         with Session(engine) as session:
             thum = session.get(Thumbnail, thumbnail_id)
-            thum.status = "error"
+            thum.status = "failed"
             thum.error_message = str(e)[:500]  # Truncate error message to fit in DB field
             session.add(thum)
             session.commit()
@@ -111,7 +111,7 @@ async def process_job(job_id: str):
             select(Thumbnail).where(Thumbnail.job_id == job_id)
             ).all()
 
-            all_failed = all(Thumbnail.status == "failed"  for Thumbnail in Thumbnails)
+            all_failed = all(thumbnail.status == "failed" for thumbnail in Thumbnails)
 
             job= session.get(Job, job_id)
             job.status = "failed" if all_failed else "completed"
