@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from fastapi.responses import StreamingResponse
@@ -107,3 +108,52 @@ async def get_job(job_id: str, session: Session = Depends(get_session)):
         thumbnails=thumbnail_responses
     )
 
+router.get("/jobs/{job_id}/stream")
+async def stream_job(job_id: str):
+    async def event_generator():
+        from database import engine
+        sent_thumbnails = set()
+
+        while True:
+            with Session(engine) as session:
+                job = session.get(Job, job_id)
+                if not job:
+                    yield f"event: error\ndata: {json.dumps({'message': 'Job not found'})}\n\n"
+
+                thumbnails = session.exec(select(Thumbnail).where(Thumbnail.job_id == job_id)).all()
+
+                for t in thumbnails:
+                    if t.id in sent_thumbnails:
+                        continue
+                    if t.status == "uploaded":
+                        varients = get_variant(t.imageKit_url) 
+                        data = json.dumps({
+                            "id": t.id,
+                            "style_name": t.style_name,
+                            "imagekit_url": t.imageKit_url,
+                            "variants": varients
+                        })
+                         
+                        yield f"event: thumbnail ready\ndata: {data}\n\n"
+                        sent_thumbnails.add(t.id)
+                
+                all_done = all(t.status in ["uploaded", "failed"] for t in thumbnails)
+                if all_done and len(sent_thumbnails) == len(thumbnails):
+                    data = json.dumps({"job_id" : job_id, "status" : job.status})
+                    yield f"event: job complete\ndata: {json.dumps({data})}\n\n"
+                    return
+                
+            await asyncio.sleep(1.5)
+
+
+
+
+    return StreamingResponse(
+        event_generator(),
+        media_type='text/event-stream',
+        headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
