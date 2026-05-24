@@ -1,0 +1,27 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+	html {
+		color-scheme: dark;
+	}
+
+	body {
+		margin: 0;
+		min-width: 320px;
+		background: #050505;
+		color: #ffffff;
+		font-family: Inter, "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+		-webkit-font-smoothing: antialiased;
+		text-rendering: optimizeLegibility;
+	}
+
+	* {
+		box-sizing: border-box;
+	}
+
+	::selection {
+		background: #ffffff;
+		color: #050505;
+	}
+}
